@@ -1,0 +1,78 @@
+#!/bin/bash
+
+# Setup some colors for nice output.
+RED() { echo -e -n "\033[8;91m$*"; }
+BLUE() { echo -e -n "\033[8;36m$*"; }
+GREEN() { echo -e -n "\033[8;32m$*"; }
+RESET() { echo -e -n "\033[0m$*"; }
+
+usage() {
+  echo "$0 [pause]"
+  GREEN
+  echo "Welcome to the $0 script."
+  echo "I am a chaos monkey script that will hijack and reset established tcp connections on"
+  echo "ports 80 and 443.  I run forever, so kill me with ctrl-c when your done."
+  RESET
+}
+
+# I'm just gonna print the usage on outset :P
+usage
+
+confirm() {
+  # call with a prompt string or use a default
+  read -r -p "${1:-Type yes or no [y/N]} " response
+  case "$response" in
+    [yY][eE][sS]|[yY]) 
+      true
+      ;;
+    *)
+      false
+      ;;
+  esac
+}
+
+
+handle-deps() {
+  if ! which killcx.pl; then
+    BLUE 
+    echo "You don't have killcx.pl, shall I update perl and install killcx.pl in /usr/local/bin ?"
+    RESET 
+    if confirm; then
+      sudo apt-get update
+      sudo apt-get install libnetpacket-perl  libnet-pcap-perl libnet-rawip-perl
+      wget http://killcx.sourceforge.net/killcx.txt -O killcx.pl
+      sudo mv killcx.pl /usr/local/bin/
+    else
+      RED
+      echo "Please install killcx.pl on your own and then retry this script."
+      echo "http://killcx.sourceforge.net/"
+      RESET
+    fi 
+  fi
+}
+
+hijack() {
+  echo "Proceeding with hijacking spree." 
+  for connection in $(sudo netstat -anp 2>/dev/null | grep ":80\|:443" | grep ESTABLISHED | sed 's/\s\+/ /g' | cut -d " " -f 5); do
+    BLUE
+    echo "killcx.pl $connection"
+    RESET
+    if sudo killcx.pl $connection 2>/dev/null; then
+      GREEN
+      echo "The connection was hijacked and RST, great."
+      RESET
+    else
+      echo "The connection doesn't exist, oh well."
+    fi
+  done
+}
+
+pause="${1-1}"
+
+handle-deps
+
+while true; do
+  hijack
+  echo "Sleeping for $pause seconds..."
+  sleep $pause
+done
